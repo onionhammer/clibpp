@@ -5,9 +5,9 @@ import macros, parseutils, strutils
 proc removePragma(statement: PNimrodNode, pname: string): bool {.compiletime.} =
     ## Removes the input pragma and returns whether pragma was removed
     var pragmas = statement.pragma()
-
+    let pname = !pname
     for index in 0 .. < pragmas.len:
-        if pname.eqIdent(repr(pragmas[index])):
+        if pragmas[index].kind == nnkIdent and pragmas[index].ident == pname:
             pragmas.del(index)
             return true
 
@@ -16,7 +16,7 @@ proc removePragma(statement: PNimrodNode, pname: string): bool {.compiletime.} =
 
 proc makeProcedure(className: string, statement: PNimrodNode): PNimrodNode {.compiletime.} =
     ## Generate an imported procedure definition for the input class name
-    var procName = $statement[0]
+    var procName = $(statement[0].basename)
     var pragmas  = statement.pragma
     var params   = statement.params
 
@@ -55,47 +55,63 @@ proc makeProcedure(className: string, statement: PNimrodNode): PNimrodNode {.com
     return statement
 
 
-proc makeField(statement: PNimrodNode): PNimrodNode {.compiletime.} =
-    ## Return only the identdefs
-    return statement[0]
-
-
-macro class*(className, header: expr, body: stmt): stmt {.immediate.} =
+macro class*(className, opts: expr, body: stmt): stmt {.immediate.} =
     ## Defines a C++ class
     result = newStmtList()
 
+    var header, importc: PNimrodNode
+    if opts.kind == nnkStrLit:
+        # user passed a header
+        header = opts
+    else:
+        # slots 2 .. -2 are arguments
+        for opt_idx in 2 .. len(callsite())-2:
+            let opt = callsite()[opt_idx]
+            case opt.kind
+            of nnkExprEqExpr, nnkExprColonExpr:
+                case ($ opt[0].ident).tolower
+                of "header":
+                  header = opt[1]
+                of "importc":
+                  importc = opt[1]
+            else:
+                echo "Warning, Unhandled argument: ", repr(opt)
+
     # Declare a type named `className`, importing from C++
     var newType = parseExpr(
-        "type " & $className &
-        " {.header:\"" & $header & "\", importcpp.} = object")
+        "type $1* {.header:$2, importc$3.} = object".format(
+            $classname, repr(header), 
+            (if importc.isNil: "" else: ":"& repr(importc))))
+
 
     var recList = newNimNode(nnkRecList)
     newType[0][2][2] = recList
 
     # Iterate through statements in class definition
+    let body = callsite()[< callsite().len]
     for statement in body.children:
-
         case statement.kind:
         of nnkProcDef:
             # Add procs with header pragma
-            var headerPragma = newNimNode(nnkExprColonExpr)
-                .add(newIdentNode("header"))
-                .add(newStrLitNode($header))
-
+            var headerPragma = newNimNode(nnkExprColonExpr).add(
+                ident("header"),
+                header.copyNimNode)
             var member = makeProcedure($className, statement)
             member.pragma.add headerPragma
             result.add member
 
         of nnkVarSection:
             # Add any fields declared in the class to the type
-            var member = makeField(statement)
-            recList.add member
+            for id_def in children(statement):
+              recList.add id_def
 
-        else: discard
+        else: 
+            result.add statement
 
     # Insert type into resulting statement list
     result.insert 0, newType
-
+    when defined(Debug): 
+        result.repr.echo
 
 when isMainModule:
 

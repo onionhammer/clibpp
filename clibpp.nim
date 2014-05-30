@@ -4,16 +4,14 @@ import macros, parseutils, strutils
 
 proc removePragma(statement: PNimrodNode, pname: string): bool {.compiletime.} =
     ## Removes the input pragma and returns whether pragma was removed
-    var index   = 0
     var pragmas = statement.pragma()
 
-    for i in pragmas.children:
-        if ($i).toLower() == pname.toLower():
+    for index in 0 .. < pragmas.len:
+        if pname.eqIdent(repr(pragmas[index])):
             pragmas.del(index)
             return true
-        inc(index)
 
-    return false;
+    return false
 
 
 proc makeProcedure(className: string, statement: PNimrodNode): PNimrodNode {.compiletime.} =

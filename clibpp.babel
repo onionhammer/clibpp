@@ -1,0 +1,6 @@
+[Package]
+name = "clibpp"
+version = "0.1"
+author = "Erik O'Leary"
+description = "Easy way to 'Mock' C++ interface"
+license = "MIT"

@@ -1,3 +1,8 @@
+clibpp
+*.sublime-project
+*.sublime-workspace
+nimcache/
+
 # Object files
 *.o
 *.ko

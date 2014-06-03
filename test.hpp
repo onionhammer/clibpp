@@ -1,19 +1,21 @@
 #include <iostream>
 
-class test {
+namespace pp {
+	class test {
 
-public:
-	static void output();
+	public:
+		static void output();
 
-	int multiply(int value, int by);
+		int multiply(int value, int by);
 
-	template<typename T>
-	T max(T a, T b) {
-	    return a > b ? a : b;
+		template<typename T>
+		T max(T a, T b) {
+		    return a > b ? a : b;
+		};
+
+		int fieldName;
+
+		static int notherName;
+
 	};
-
-	int fieldName;
-
-	static int notherName;
-
-};
+}

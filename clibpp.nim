@@ -14,7 +14,7 @@ proc removePragma(statement: PNimrodNode, pname: string): bool {.compiletime.} =
     return false
 
 
-proc makeProcedure(className: string, statement: PNimrodNode): PNimrodNode {.compiletime.} =
+proc makeProcedure(className, ns: string, statement: PNimrodNode): PNimrodNode {.compiletime.} =
     ## Generate an imported procedure definition for the input class name
     var procName = $(statement[0].basename)
     var pragmas  = statement.pragma
@@ -32,7 +32,7 @@ proc makeProcedure(className: string, statement: PNimrodNode): PNimrodNode {.com
     if statement.removePragma("isstatic"):
         importCPragma = newNimNode(nnkExprColonExpr)
             .add(newIdentNode("importc"))
-            .add(newStrLitNode(className & "::" & procName))
+            .add(newStrLitNode(ns & className & "::" & procName))
 
         # If static, insert 'this: typedesc[`className`]' param
         thisNode = newNimNode(nnkIdentDefs)
@@ -55,32 +55,48 @@ proc makeProcedure(className: string, statement: PNimrodNode): PNimrodNode {.com
     return statement
 
 
+template use*(ns: string): stmt {.immediate.} =
+    {. emit: "using namespace $1;".format(ns) .}
+
+
 macro class*(className, opts: expr, body: stmt): stmt {.immediate.} =
     ## Defines a C++ class
     result = newStmtList()
 
     var header, importc: PNimrodNode
+    var ns: string
+
     if opts.kind == nnkStrLit:
         # user passed a header
         header = opts
+
     else:
         # slots 2 .. -2 are arguments
         for opt_idx in 2 .. len(callsite())-2:
             let opt = callsite()[opt_idx]
+
             case opt.kind
             of nnkExprEqExpr, nnkExprColonExpr:
                 case ($ opt[0].ident).tolower
                 of "header":
-                  header = opt[1]
+                    header = opt[1]
                 of "importc":
-                  importc = opt[1]
+                    importc = opt[1]
+                of "ns":
+                    ns = $opt[1] & "::"
+
             else:
                 echo "Warning, Unhandled argument: ", repr(opt)
+
+    if not isNil(importc) or isNil(ns):
+        ns = ""
+    if not isNil(ns):
+        importc = parseExpr("\"" & ns & $className & "\"")
 
     # Declare a type named `className`, importing from C++
     var newType = parseExpr(
         "type $1* {.header:$2, importc$3.} = object".format(
-            $classname, repr(header), 
+            $className, repr(header),
             (if importc.isNil: "" else: ":"& repr(importc))))
 
 
@@ -89,6 +105,7 @@ macro class*(className, opts: expr, body: stmt): stmt {.immediate.} =
 
     # Iterate through statements in class definition
     let body = callsite()[< callsite().len]
+
     for statement in body.children:
         case statement.kind:
         of nnkProcDef:
@@ -96,7 +113,7 @@ macro class*(className, opts: expr, body: stmt): stmt {.immediate.} =
             var headerPragma = newNimNode(nnkExprColonExpr).add(
                 ident("header"),
                 header.copyNimNode)
-            var member = makeProcedure($className, statement)
+            var member = makeProcedure($className, ns, statement)
             member.pragma.add headerPragma
             result.add member
 
@@ -105,13 +122,15 @@ macro class*(className, opts: expr, body: stmt): stmt {.immediate.} =
             for id_def in children(statement):
               recList.add id_def
 
-        else: 
+        else:
             result.add statement
 
     # Insert type into resulting statement list
     result.insert 0, newType
-    when defined(Debug): 
-        result.repr.echo
+
+    when defined(Debug):
+        echo result.repr
+
 
 when isMainModule:
 
@@ -139,7 +158,7 @@ when isMainModule:
 
     else:
         # Import "test" class from C++:
-        class test, "../test.hpp":
+        class(test, ns: "pp", header: "../test.hpp"):
             proc multiply[T](value, by: T): int
             proc output: void {.isstatic.}
             proc max[T](a, b: T): T

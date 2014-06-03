@@ -82,7 +82,7 @@ macro class*(className, opts: expr, body: stmt): stmt {.immediate.} =
                     header = opt[1]
                 of "importc":
                     importc = opt[1]
-                of "ns":
+                of "namespace", "ns":
                     ns = $opt[1] & "::"
 
             else:
@@ -158,7 +158,7 @@ when isMainModule:
 
     else:
         # Import "test" class from C++:
-        class(test, ns: "pp", header: "../test.hpp"):
+        class(test, ns: pp, header: "../test.hpp"):
             proc multiply[T](value, by: T): int
             proc output: void {.isstatic.}
             proc max[T](a, b: T): T

@@ -134,7 +134,7 @@ macro class*(className, opts: expr, body: stmt): stmt {.immediate.} =
 
 when isMainModule:
 
-    {.link: "test.o".}
+    {.compile: "test.cpp".}#link: "test.o".}
 
     when false:
         # Traditional wrapper

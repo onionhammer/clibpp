@@ -58,53 +58,66 @@ proc makeProcedure(className, ns: string, statement: PNimrodNode): PNimrodNode {
 template use*(ns: string): stmt {.immediate.} =
     {. emit: "using namespace $1;".format(ns) .}
 
+type
+  class_macro_options = tuple
+    header, importc: PNimrodNode
+    className: PNimrodNode
+    ns: string
+    
+proc parse_opts (className: PNimrodNode; opts: seq[PNimrodNode]): class_macro_options {.compileTime.} =
+
+    if opts.len == 1 and opts[0].kind == nnkStrLit:
+        # user passed a header
+        result.header = opts[0]
+
+    else:
+        for opt in opts.items:
+            case opt.kind
+            of nnkExprEqExpr, nnkExprColonExpr:
+                case ($ opt[0].ident).tolower
+                of "header":
+                    result.header = opt[1]
+                of "importc":
+                    result.importc = opt[1]
+                of "namespace", "ns":
+                    result.ns = $opt[1] & "::"
+
+            else:
+                echo "Warning, Unhandled argument: ", repr(opt)
+
+    if not isNil(result.importc) or isNil(result.ns):
+        result.ns = ""
+    if not isNil(result.ns):
+        result.importc = newStrLitNode(result.ns & $className)
+
+    result.className = className
+
 
 macro class*(className, opts: expr, body: stmt): stmt {.immediate.} =
     ## Defines a C++ class
     result = newStmtList()
 
-    var header, importc: PNimrodNode
-    var ns: string
-
-    if opts.kind == nnkStrLit:
-        # user passed a header
-        header = opts
-
-    else:
-        # slots 2 .. -2 are arguments
-        for opt_idx in 2 .. len(callsite())-2:
-            let opt = callsite()[opt_idx]
-
-            case opt.kind
-            of nnkExprEqExpr, nnkExprColonExpr:
-                case ($ opt[0].ident).tolower
-                of "header":
-                    header = opt[1]
-                of "importc":
-                    importc = opt[1]
-                of "namespace", "ns":
-                    ns = $opt[1] & "::"
-
-            else:
-                echo "Warning, Unhandled argument: ", repr(opt)
-
-    if not isNil(importc) or isNil(ns):
-        ns = ""
-    if not isNil(ns):
-        importc = parseExpr("\"" & ns & $className & "\"")
+    var oseq: seq[PNimrodNode] = @[]
+    if len(callsite()) > 3:
+      # slots 2 .. -2 are arguments
+      for i in 2 .. len(callsite())-2:
+        oseq.add callsite()[i]
+    let opts = parse_opts(className, oseq)
 
     # Declare a type named `className`, importing from C++
     var newType = parseExpr(
         "type $1* {.header:$2, importc$3.} = object".format(
-            $className, repr(header),
-            (if importc.isNil: "" else: ":"& repr(importc))))
+            $ opts.className, repr(opts.header),
+            (if opts.importc.isNil: "" else: ":"& repr(opts.importc))))
 
 
     var recList = newNimNode(nnkRecList)
     newType[0][2][2] = recList
 
     # Iterate through statements in class definition
-    let body = callsite()[< callsite().len]
+    let 
+      body = callsite()[< callsite().len]
+      classname_s = $ opts.className
 
     for statement in body.children:
         case statement.kind:
@@ -112,8 +125,8 @@ macro class*(className, opts: expr, body: stmt): stmt {.immediate.} =
             # Add procs with header pragma
             var headerPragma = newNimNode(nnkExprColonExpr).add(
                 ident("header"),
-                header.copyNimNode)
-            var member = makeProcedure($className, ns, statement)
+                opts.header.copyNimNode)
+            var member = makeProcedure(classname_s, opts.ns, statement)
             member.pragma.add headerPragma
             result.add member
 

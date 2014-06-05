@@ -2,6 +2,12 @@
 import macros, parseutils, strutils
 
 
+type TMacroOptions = tuple
+    header, importc: PNimrodNode
+    className: PNimrodNode
+    ns: string
+
+
 proc removePragma(statement: PNimrodNode, pname: string): bool {.compiletime.} =
     ## Removes the input pragma and returns whether pragma was removed
     var pragmas = statement.pragma()
@@ -58,13 +64,8 @@ proc makeProcedure(className, ns: string, statement: PNimrodNode): PNimrodNode {
 template use*(ns: string): stmt {.immediate.} =
     {. emit: "using namespace $1;".format(ns) .}
 
-type
-  class_macro_options = tuple
-    header, importc: PNimrodNode
-    className: PNimrodNode
-    ns: string
-    
-proc parse_opts (className: PNimrodNode; opts: seq[PNimrodNode]): class_macro_options {.compileTime.} =
+
+proc parse_opts (className: PNimrodNode; opts: seq[PNimrodNode]): TMacroOptions {.compileTime.} =
 
     if opts.len == 1 and opts[0].kind == nnkStrLit:
         # user passed a header
@@ -115,7 +116,7 @@ macro class*(className, opts: expr, body: stmt): stmt {.immediate.} =
     newType[0][2][2] = recList
 
     # Iterate through statements in class definition
-    let 
+    let
       body = callsite()[< callsite().len]
       classname_s = $ opts.className
 

@@ -1,13 +1,14 @@
 ## Easy way to 'Mock' C++ interface
 import macros, parseutils, strutils
 
-
+# Types
 type TMacroOptions = tuple
     header, importc: PNimrodNode
     className: PNimrodNode
     ns: string
 
 
+# Procedures
 proc removePragma(statement: PNimrodNode, pname: string): bool {.compiletime.} =
     ## Removes the input pragma and returns whether pragma was removed
     var pragmas = statement.pragma()
@@ -16,8 +17,6 @@ proc removePragma(statement: PNimrodNode, pname: string): bool {.compiletime.} =
         if pragmas[index].kind == nnkIdent and pragmas[index].ident == pname:
             pragmas.del(index)
             return true
-
-    return false
 
 
 proc makeProcedure(className, ns: string, statement: PNimrodNode): PNimrodNode {.compiletime.} =
@@ -61,12 +60,7 @@ proc makeProcedure(className, ns: string, statement: PNimrodNode): PNimrodNode {
     return statement
 
 
-template use*(ns: string): stmt {.immediate.} =
-    {. emit: "using namespace $1;".format(ns) .}
-
-
-proc parse_opts (className: PNimrodNode; opts: seq[PNimrodNode]): TMacroOptions {.compileTime.} =
-
+proc parse_opts(className: PNimrodNode; opts: seq[PNimrodNode]): TMacroOptions {.compileTime.} =
     if opts.len == 1 and opts[0].kind == nnkStrLit:
         # user passed a header
         result.header = opts[0]
@@ -94,6 +88,10 @@ proc parse_opts (className: PNimrodNode; opts: seq[PNimrodNode]): TMacroOptions 
     result.className = className
 
 
+template use*(ns: string): stmt {.immediate.} =
+    {. emit: "using namespace $1;".format(ns) .}
+
+
 macro class*(className, opts: expr, body: stmt): stmt {.immediate.} =
     ## Defines a C++ class
     result = newStmtList()
@@ -116,9 +114,8 @@ macro class*(className, opts: expr, body: stmt): stmt {.immediate.} =
     newType[0][2][2] = recList
 
     # Iterate through statements in class definition
-    let
-      body = callsite()[< callsite().len]
-      classname_s = $ opts.className
+    let body        = callsite()[< callsite().len]
+    let classname_s = $ opts.className
 
     for statement in body.children:
         case statement.kind:

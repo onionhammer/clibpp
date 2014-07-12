@@ -1,6 +1,9 @@
 ## Easy way to 'Mock' C++ interface
 import macros, parseutils, strutils
 
+when not defined(CPP):
+    {.error: "Must be compiled with cpp switch".}
+
 # Types
 type TMacroOptions = tuple
     header, importc: PNimrodNode
@@ -144,7 +147,6 @@ macro class*(className, opts: expr, body: stmt): stmt {.immediate.} =
 
 
 when isMainModule:
-
     {.compile: "test.cpp".}
 
     when false:

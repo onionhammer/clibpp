@@ -95,6 +95,20 @@ template use*(ns: string): stmt {.immediate.} =
     {. emit: "using namespace $1;".format(ns) .}
 
 
+macro namespace*(namespaceName: expr, body: stmt): stmt {.immediate.} =
+    result = newStmtList()
+
+    var newNamespace = newNimNode(nnkExprColonExpr).
+        add(ident("ns"), namespaceName)
+
+    # Inject new namespace into each class declaration
+    for i in body.children:
+        if $i[0] == "class":
+            i.insert 2, newNamespace
+
+    result.add body
+
+
 macro class*(className, opts: expr, body: stmt): stmt {.immediate.} =
     ## Defines a C++ class
     result = newStmtList()
@@ -111,7 +125,6 @@ macro class*(className, opts: expr, body: stmt): stmt {.immediate.} =
         "type $1* {.header:$2, importc$3.} = object".format(
             $ opts.className, repr(opts.header),
             (if opts.importc.isNil: "" else: ":"& repr(opts.importc))))
-
 
     var recList = newNimNode(nnkRecList)
     newType[0][2][2] = recList
@@ -148,15 +161,15 @@ macro class*(className, opts: expr, body: stmt): stmt {.immediate.} =
 
 when isMainModule:
     {.compile: "test.cpp".}
+    const test_h = "../test.hpp"
 
     when false:
         # Traditional wrapper
-        const test_h = "../test.hpp"
         type test {.header: test_h, importcpp.} = object
             fieldName: cint
             notherName: cint
 
-        proc output(this: typedesc[test]): void {.header: test_h, importc: "test::output".}
+        proc output(this: typedesc[test]) {.header: test_h, importc: "test::output".}
         proc multiply(this: test, value, by: cint): cint {.header: test_h, importcpp.}
         proc max[T](this: test, a, b: T): T {.header: test_h, importcpp.}
 
@@ -171,11 +184,12 @@ when isMainModule:
 
     else:
         # Import "test" class from C++:
-        class(test, ns: pp, header: "../test.hpp"):
-            proc multiply[T](value, by: T): int
-            proc output: void {.isstatic.}
-            proc max[T](a, b: T): T
-            var fieldName, notherName: int
+        namespace pp:
+            class(test, header: test_h):
+                proc multiply[T](value, by: T): int
+                proc output {.isstatic.}
+                proc max[T](a, b: T): T
+                var fieldName, notherName: int
 
         # Test interface
         test.output()

@@ -7,7 +7,7 @@ Outline the C++ class
 ---------------------
 ```nimrod
 namespace somelibrary:
-	class test, "../test.hpp":
+	class(test, header: "../test.hpp"):
 	    proc multiply[T](value, by: T): int
 	    proc output: void {.isstatic.}
 	    proc max[T](a, b: T): T

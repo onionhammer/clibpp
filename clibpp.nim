@@ -108,7 +108,6 @@ macro namespace*(namespaceName: expr, body: stmt): stmt {.immediate.} =
 
     result.add body
 
-
 macro class*(className, opts: expr, body: stmt): stmt {.immediate.} =
     ## Defines a C++ class
     result = newStmtList()
@@ -130,8 +129,10 @@ macro class*(className, opts: expr, body: stmt): stmt {.immediate.} =
     newType[0][2][2] = recList
 
     # Iterate through statements in class definition
-    let body        = callsite()[< callsite().len]
+    var body        = callsite()[< callsite().len]
     let classname_s = $ opts.className
+    # fix for nnkDo showing up here
+    if body.kind == nnkDo: body = body.body
 
     for statement in body.children:
         case statement.kind:

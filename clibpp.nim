@@ -9,6 +9,7 @@ type TMacroOptions = tuple
     header, importc: PNimrodNode
     className: PNimrodNode
     ns: string
+    inheritable: bool
 
 
 # Procedures
@@ -70,18 +71,29 @@ proc parse_opts(className: PNimrodNode; opts: seq[PNimrodNode]): TMacroOptions {
 
     else:
         for opt in opts.items:
+            var handled = true
             case opt.kind
             of nnkExprEqExpr, nnkExprColonExpr:
-                case ($ opt[0].ident).tolower
+                case ($ opt[0].ident).toLower
                 of "header":
                     result.header = opt[1]
                 of "importc":
                     result.importc = opt[1]
                 of "namespace", "ns":
                     result.ns = $opt[1] & "::"
-
+                else:
+                    handled = false
+            of nnkIdent:
+                case ($ opt.ident).toLower
+                of "inheritable":
+                    result.inheritable = true
+                else:
+                    handled = false
             else:
-                echo "Warning, Unhandled argument: ", repr(opt)
+                handled = false
+
+            if not handled:
+                echo "Warning, unhandled argument: ", repr(opt)
 
     if not isNil(result.importc) or isNil(result.ns):
         result.ns = ""
@@ -112,6 +124,12 @@ macro class*(className, opts: expr, body: stmt): stmt {.immediate.} =
     ## Defines a C++ class
     result = newStmtList()
 
+    var parent: NimNode
+    var className = className
+    if className.kind == nnkInfix and className[0].ident == !"of":
+        parent = className[2]
+        className = className[1]
+
     var oseq: seq[PNimrodNode] = @[]
     if len(callsite()) > 3:
       # slots 2 .. -2 are arguments
@@ -121,17 +139,23 @@ macro class*(className, opts: expr, body: stmt): stmt {.immediate.} =
 
     # Declare a type named `className`, importing from C++
     var newType = parseExpr(
-        "type $1* {.header:$2, importc$3.} = object".format(
+        "type $1* {.header:$2, importcpp$3.} = object".format(
             $ opts.className, repr(opts.header),
             (if opts.importc.isNil: "" else: ":"& repr(opts.importc))))
 
     var recList = newNimNode(nnkRecList)
     newType[0][2][2] = recList
+    if not parent.isNil:
+        # Type has a parent
+        newType[0][2][1] = newNimNode(nnkOfInherit).add(parent)
+    elif opts.inheritable:
+        # Add inheritable pragma
+        newType[0][0][1].add ident"inheritable"
 
     # Iterate through statements in class definition
     var body        = callsite()[< callsite().len]
     let classname_s = $ opts.className
-    # fix for nnkDo showing up here
+    # Fix for nnkDo showing up here
     if body.kind == nnkDo: body = body.body
 
     for statement in body.children:

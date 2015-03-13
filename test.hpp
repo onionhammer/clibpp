@@ -16,6 +16,10 @@ namespace pp {
 		int fieldName;
 
 		static int notherName;
+	};
 
+	class test_sub: test {
+	public:
+		int childf();
 	};
 }

@@ -210,11 +210,14 @@ when isMainModule:
     else:
         # Import "test" class from C++:
         namespace pp:
-            class(test, header: test_h):
+            class(test, inheritable, header: test_h):
                 proc multiply[T](value, by: T): int
                 proc output {.isstatic.}
                 proc max[T](a, b: T): T
+                proc foo(): int
                 var fieldName, notherName: int
+            class(test_sub of test, header: test_h):
+                proc childf: int
 
         # Test interface
         test.output()
@@ -224,3 +227,7 @@ when isMainModule:
         echo item.fieldName
         echo item.max(2, 10)
         echo item.notherName
+
+        var item2: test_sub
+        echo item2.childf
+        assert item2 of test

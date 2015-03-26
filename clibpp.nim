@@ -102,6 +102,18 @@ proc parse_opts(className: PNimrodNode; opts: seq[PNimrodNode]): TMacroOptions {
 
     result.className = className
 
+proc buildStaticAccessor (name,ty, className:NimNode; ns:string): NimNode {.compileTime.} =
+    result = newProc(
+        name = name,
+        procType = nnkProcDef,
+        body = newEmptyNode(),
+        params = [ty, newIdentDefs(ident"ty", parseExpr("typedesc["& $className &"]"))]
+    )
+    result.pragma = newNimNode(nnkPragma).add(
+        ident"noDecl",
+        newNimNode(nnkExprColonExpr).add(
+            ident"importcpp",
+            newLit(ns & $className & "::" & $name.baseName & "@")))
 
 template use*(ns: string): stmt {.immediate.} =
     {. emit: "using namespace $1;".format(ns) .}
@@ -170,9 +182,35 @@ macro class*(className, opts: expr, body: stmt): stmt {.immediate.} =
             result.add member
 
         of nnkVarSection:
-            # Add any fields declared in the class to the type
+            # Add any var declared in the class to the type
+            # create accessors for any static variables
+            # proc varname* (ty:typedesc[classtype]): ty{.importcpp:"Class::StaticVar@"}
+            var 
+                statics: seq[tuple[name,ty: NimNode]] = @[]
+                fields : seq[tuple[name,ty: NimNode]] = @[]
+
             for id_def in children(statement):
-              recList.add id_def
+                let ty = id_def[id_def.len - 2]
+
+                for i in 0 .. id_def.len - 3:
+                    # iterate over the var names, check each for isStatic pragma
+                    let this_ident = id_def[i]
+                    var isStatic = false
+                    if this_ident.kind == nnkPragmaExpr:
+                        for prgma in children(this_ident[1]):
+                            if prgma.kind == nnkIdent and ($prgma).eqIdent("isStatic"):
+                                statics.add((this_ident[0], ty))
+                                isStatic = true
+                                break
+                    if not isStatic: 
+                        fields.add((this_ident, ty))
+
+                # recList.add id_def
+
+            for n,ty in items(fields):
+                recList.add newIdentDefs(n, ty)
+            for n,ty in items(statics):
+                result.add buildStaticAccessor(n, ty, opts.className, opts.ns)
 
         else:
             result.add statement
@@ -215,7 +253,7 @@ when isMainModule:
                 proc output {.isstatic.}
                 proc max[T](a, b: T): T
                 proc foo(): int
-                var fieldName, notherName: int
+                var fieldName, notherName{.isStatic.}: int
             class(test_sub of test, header: test_h):
                 proc childf: int
 
@@ -226,7 +264,8 @@ when isMainModule:
         echo item.multiply(5, 9)
         echo item.fieldName
         echo item.max(2, 10)
-        echo item.notherName
+        #echo item.notherName
+        echo test.notherName
 
         var item2: test_sub
         echo item2.childf
